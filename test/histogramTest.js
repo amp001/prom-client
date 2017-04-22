@@ -1,7 +1,8 @@
 'use strict';
 
 describe('histogram', function() {
-	var Histogram = require('../index').histogram;
+	var Histogram = require('../index').Histogram;
+	var register = require('../index').register;
 	var sinon = require('sinon');
 	var expect = require('chai').expect;
 	var instance;
@@ -10,11 +11,17 @@ describe('histogram', function() {
 	});
 	afterEach(function() {
 		instance = null;
+		register.clear();
 	});
 
 	it('should increase count', function() {
 		instance.observe(0.5);
 		var valuePair = getValueByName('test_histogram_count', instance.get().values);
+		expect(valuePair.value).to.equal(1);
+	});
+	it('should be able to observe 0s', function() {
+		instance.observe(0);
+		var valuePair = getValueByLabel(0.005, instance.get().values);
 		expect(valuePair.value).to.equal(1);
 	});
 	it('should increase sum', function() {
@@ -45,7 +52,7 @@ describe('histogram', function() {
 	});
 
 	it('should add buckets in increasing numerical order', function() {
-		var histogram = new Histogram('test_histogram', 'test', { buckets: [1, 5] });
+		var histogram = new Histogram('test_histogram_2', 'test', { buckets: [1, 5] });
 		histogram.observe(1.5);
 		var values = histogram.get().values;
 		expect(values[0].labels.le).to.equal(1);
@@ -53,7 +60,7 @@ describe('histogram', function() {
 		expect(values[2].labels.le).to.equal('+Inf');
 	});
 	it('should group counts on each label set', function() {
-		var histogram = new Histogram('test_histogram', 'test', [ 'code' ]);
+		var histogram = new Histogram('test_histogram_2', 'test', [ 'code' ]);
 		histogram.observe({ code: '200' }, 1);
 		histogram.observe({ code: '300' }, 1);
 		var values = getValuesByLabel(1, histogram.get().values);
@@ -104,7 +111,7 @@ describe('histogram', function() {
 		var valuePair = getValueByName('test_histogram_count', instance.get().values);
 		expect(valuePair.value).to.equal(1);
 		instance.reset();
-		var valuePair = getValueByName('test_histogram_count', instance.get().values);
+		valuePair = getValueByName('test_histogram_count', instance.get().values);
 		expect(valuePair.value).to.equal(undefined);
 	});
 
@@ -133,6 +140,29 @@ describe('histogram', function() {
 			end();
 			var res = getValueByLeAndLabel(0.5, 'method', 'get', instance.get().values);
 			expect(res.value).to.equal(1);
+			clock.restore();
+		});
+
+		it('should start a timer and set labels afterwards', function(){
+			var clock = sinon.useFakeTimers();
+			var end = instance.startTimer();
+			clock.tick(500);
+			end({ 'method': 'get' });
+			var res = getValueByLeAndLabel(0.5, 'method', 'get', instance.get().values);
+			expect(res.value).to.equal(1);
+			clock.restore();
+		});
+
+		it('should allow labels before and after timers', function(){
+			instance = new Histogram('histogram_labels_2', 'Histogram with labels fn', [ 'method', 'success' ]);
+			var clock = sinon.useFakeTimers();
+			var end = instance.startTimer({ 'method': 'get' });
+			clock.tick(500);
+			end({ 'success': 'SUCCESS' });
+			var res1 = getValueByLeAndLabel(0.5, 'method', 'get', instance.get().values);
+			var res2 = getValueByLeAndLabel(0.5, 'success', 'SUCCESS', instance.get().values);
+			expect(res1.value).to.equal(1);
+			expect(res2.value).to.equal(1);
 			clock.restore();
 		});
 	});

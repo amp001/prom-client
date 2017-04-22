@@ -1,12 +1,18 @@
 'use strict';
 
 describe('summary', function() {
-	var Summary = require('../index').summary;
+	var Summary = require('../index').Summary;
+	var register = require('../index').register;
 	var expect = require('chai').expect;
+	var sinon = require('sinon');
 	var instance;
 
 	beforeEach(function() {
 		instance = new Summary('summary_test', 'test');
+	});
+
+	afterEach(function() {
+		register.clear();
 	});
 
 	it('should add a value to the summary', function() {
@@ -16,6 +22,11 @@ describe('summary', function() {
 		expect(instance.get().values[7].metricName).to.equal('summary_test_sum');
 		expect(instance.get().values[7].value).to.equal(100);
 		expect(instance.get().values[8].metricName).to.equal('summary_test_count');
+		expect(instance.get().values[8].value).to.equal(1);
+	});
+
+	it('should be able to observe 0s', function() {
+		instance.observe(0);
 		expect(instance.get().values[8].value).to.equal(1);
 	});
 
@@ -57,6 +68,7 @@ describe('summary', function() {
 	});
 
 	it('should correctly use calculate other percentiles when configured', function() {
+		register.clear();
 		instance = new Summary('summary_test', 'test', { percentiles: [ 0.5, 0.9 ] });
 		instance.observe(100);
 		instance.observe(100);
@@ -80,6 +92,7 @@ describe('summary', function() {
 	});
 
 	it('should allow to reset itself', function() {
+		register.clear();
 		instance = new Summary('summary_test', 'test', { percentiles: [ 0.5 ] });
 		instance.observe(100);
 		expect(instance.get().values[0].labels.quantile).to.equal(0.5);
@@ -105,6 +118,7 @@ describe('summary', function() {
 
 	describe('labels', function() {
 		beforeEach(function() {
+			register.clear();
 			instance = new Summary('summary_test', 'help', [ 'method', 'endpoint'], { percentiles: [ 0.9 ] });
 		});
 
@@ -150,6 +164,81 @@ describe('summary', function() {
 				instance.labels('GET').observe();
 			};
 			expect(fn).to.throw(Error);
+		});
+
+		it('should start a timer', function() {
+			var clock = sinon.useFakeTimers();
+			var end = instance.labels('GET', '/test').startTimer();
+			clock.tick(1000);
+			end();
+			var values = instance.get().values;
+			expect(values).to.have.length(3);
+			expect(values[0].labels.method).to.equal('GET');
+			expect(values[0].labels.endpoint).to.equal('/test');
+			expect(values[0].labels.quantile).to.equal(0.9);
+			expect(values[0].value).to.equal(1);
+
+			expect(values[1].metricName).to.equal('summary_test_sum');
+			expect(values[1].labels.method).to.equal('GET');
+			expect(values[1].labels.endpoint).to.equal('/test');
+			expect(values[1].value).to.equal(1);
+
+			expect(values[2].metricName).to.equal('summary_test_count');
+			expect(values[2].labels.method).to.equal('GET');
+			expect(values[2].labels.endpoint).to.equal('/test');
+			expect(values[2].value).to.equal(1);
+
+			clock.restore();
+		});
+
+		it('should start a timer and set labels afterwards', function(){
+			var clock = sinon.useFakeTimers();
+			var end = instance.startTimer();
+			clock.tick(1000);
+			end({ 'method': 'GET', 'endpoint': '/test' });
+			var values = instance.get().values;
+			expect(values).to.have.length(3);
+			expect(values[0].labels.method).to.equal('GET');
+			expect(values[0].labels.endpoint).to.equal('/test');
+			expect(values[0].labels.quantile).to.equal(0.9);
+			expect(values[0].value).to.equal(1);
+
+			expect(values[1].metricName).to.equal('summary_test_sum');
+			expect(values[1].labels.method).to.equal('GET');
+			expect(values[1].labels.endpoint).to.equal('/test');
+			expect(values[1].value).to.equal(1);
+
+			expect(values[2].metricName).to.equal('summary_test_count');
+			expect(values[2].labels.method).to.equal('GET');
+			expect(values[2].labels.endpoint).to.equal('/test');
+			expect(values[2].value).to.equal(1);
+
+			clock.restore();
+		});
+
+		it('should allow labels before and after timers', function(){
+			var clock = sinon.useFakeTimers();
+			var end = instance.startTimer({ 'method': 'GET' });
+			clock.tick(1000);
+			end({ 'endpoint': '/test' });
+			var values = instance.get().values;
+			expect(values).to.have.length(3);
+			expect(values[0].labels.method).to.equal('GET');
+			expect(values[0].labels.endpoint).to.equal('/test');
+			expect(values[0].labels.quantile).to.equal(0.9);
+			expect(values[0].value).to.equal(1);
+
+			expect(values[1].metricName).to.equal('summary_test_sum');
+			expect(values[1].labels.method).to.equal('GET');
+			expect(values[1].labels.endpoint).to.equal('/test');
+			expect(values[1].value).to.equal(1);
+
+			expect(values[2].metricName).to.equal('summary_test_count');
+			expect(values[2].labels.method).to.equal('GET');
+			expect(values[2].labels.endpoint).to.equal('/test');
+			expect(values[2].value).to.equal(1);
+
+			clock.restore();
 		});
 	});
 });

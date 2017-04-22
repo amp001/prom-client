@@ -21,17 +21,20 @@ describe('register', function() {
 		it('with type as second item', function() {
 			expect(output[1]).to.equal('# TYPE test_metric counter');
 		});
-		it('with value of the metric as third item', function() {
+		it('with first value of the metric as third item', function() {
 			expect(output[2]).to.equal('test_metric{label="hello",code="303"} 12');
+		});
+		it('with second value of the metric as fourth item', function() {
+			expect(output[3]).to.equal('test_metric{label="bye",code="404"} 34 1485392700000');
 		});
 	});
 
-	it('should handle more than one metric', function() {
-		register.registerMetric(getMetric());
+	it('should throw on more than one metric', function() {
 		register.registerMetric(getMetric());
 
-		var actual = register.metrics().split('\n');
-		expect(actual).to.have.length(7);
+		expect(function() {
+			register.registerMetric(getMetric());
+		}).to.throw('A metric with the name test_metric has already been registered.');
 	});
 
 	it('should handle a metric without labels', function() {
@@ -57,7 +60,7 @@ describe('register', function() {
 			register.registerMetric({
 				get: function() {
 					return {
-						name: 'test_"_\_\n_metric',
+						name: 'test_"_\\_\n_metric',
 						help: 'help_help',
 						type: 'counter'
 					};
@@ -65,19 +68,16 @@ describe('register', function() {
 			});
 			escapedResult = register.metrics();
 		});
-		it('double quote to /"', function() {
-			expect(escapedResult).to.match(/\\"/);
-		});
 		it('backslash to \\\\', function() {
 			expect(escapedResult).to.match(/\\\\/);
 		});
 		it('newline to \\\\n', function() {
-			// expect(escapedResult).to.match(/\/);
+			expect(escapedResult).to.match(/\n/);
 		});
 	});
 
-	function getMetric() {
-		return {
+	it('should escape " in label values', function() {
+		register.registerMetric({
 			get: function() {
 				return {
 					name: 'test_metric',
@@ -87,7 +87,73 @@ describe('register', function() {
 						value: 12,
 						labels: {
 							label: 'hello',
+							code: '3"03'
+						}
+					}]
+				};
+			}
+		});
+		var escapedResult = register.metrics();
+		expect(escapedResult).to.match(/\\"/);
+	});
+
+	describe('should output metrics as JSON', function() {
+		it('should output metrics as JSON', function() {
+			register.registerMetric(getMetric());
+			var output = register.getMetricsAsJSON();
+
+			expect(output.length).to.equal(1);
+			expect(output[0].name).to.equal('test_metric');
+			expect(output[0].type).to.equal('counter');
+			expect(output[0].help).to.equal('A test metric');
+			expect(output[0].values.length).to.equal(2);
+		});
+	});
+
+	it('should allow removing single metrics', function() {
+		register.registerMetric(getMetric());
+		register.registerMetric(getMetric('some other name'));
+
+		var output = register.getMetricsAsJSON();
+		expect(output.length).to.equal(2);
+
+		register.removeSingleMetric('test_metric');
+
+		output = register.getMetricsAsJSON();
+
+		expect(output.length).to.equal(1);
+		expect(output[0].name).to.equal('some other name');
+	});
+
+	it('should allow getting single metrics', function() {
+		var metric = getMetric();
+		register.registerMetric(metric);
+
+		var output = register.getSingleMetric('test_metric');
+		expect(output).to.equal(metric);
+	});
+
+	function getMetric(name) {
+		name = name || 'test_metric';
+		return {
+			name: name,
+			get: function() {
+				return {
+					name: name,
+					type: 'counter',
+					help: 'A test metric',
+					values: [ {
+						value: 12,
+						labels: {
+							label: 'hello',
 							code: '303'
+						}
+					}, {
+						value: 34,
+						timestamp: 1485392700000,
+						labels: {
+							label: 'bye',
+							code: '404'
 						}
 					}]
 				};

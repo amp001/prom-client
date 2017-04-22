@@ -1,1 +1,9 @@
 language: node_js
+node_js:
+  - node
+  - 6
+  - 4
+os:
+  - linux
+  - osx
+osx_image: xcode7.3
